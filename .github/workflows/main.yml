@@ -64,7 +64,7 @@ jobs:
       - name: Build media Docker image
         run: |
           # Explicitly tag as TestingPE for media image
-          REPO_NAME="LucaDanijsPXL/TestingPE"  # Ensure this is the correct target repository
+          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
           docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
