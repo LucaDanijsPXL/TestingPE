@@ -60,5 +60,7 @@ jobs:
         run: |
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
           TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-mmedia:$TAG ./media
+          
+          # Correct the image name to pxlcensor-media (not pxlcensor-mmedia)
+          docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
           docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
