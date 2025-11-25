@@ -2,9 +2,12 @@ name: Build and Push Docker Images to GHCR
 
 # Trigger the workflow on tag creation
 on:
-  push:
-    tags:
-      - 'v*'  # This will match tags like v0.8, v1.0, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.8)'
+        required: true
+        default: 'v0.8'  # Default version tag
 
 jobs:
   build-and-push:
