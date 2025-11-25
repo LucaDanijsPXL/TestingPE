@@ -1,65 +1,82 @@
 name: Build and Push Docker Images to GHCR
 
+# Trigger the workflow on tag creation
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., v0.8)'
-        required: true
-        default: 'v0.8'  # Default version tag
+  push:
+    tags:
+      - 'v*'  # This will match tags like v0.8, v1.0, etc.
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository code
-      - name: Checkout code
+      # Step 1: Checkout the code
+      - name: Checkout the code
         uses: actions/checkout@v2
 
-      # Step 2: Add the org.opencontainers.image.source label to the Dockerfile
-      - name: Modify Dockerfile to include org.opencontainers.image.source label
-        run: |
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./frontend/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./api/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./processor/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./media/Dockerfile
-      # Step 3: Log in to GitHub Container Registry (GHCR) using Personal Access Token (PAT)
-      - name: Log in to GHCR using PAT
+      # Step 2: Set up Docker Buildx (for multi-platform support)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      # Step 3: Log in to GitHub Container Registry (GHCR)
+      - name: Log in to GHCR
         uses: docker/login-action@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}  # GitHub username
-          password: ${{ secrets.GHCR_TOKEN }}  # PAT stored in GitHub Secrets
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # Store your GHCR PAT in secrets
+          registry: ghcr.io  # Specify GitHub Container Registry
 
-      # Step 4: Build and push frontend Docker image
-      - name: Build frontend Docker image
+      # Step 4: Determine the tag type and prefix (TEST_ or PROD_)
+      - name: Determine Tag Prefix
+        id: tag_prefix
         run: |
-          # Convert the repository name and tag to lowercase
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
-          
-          # Build and push Docker image
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-frontend:$TAG ./frontend
-          docker push ghcr.io/$REPO_NAME/pxlcensor-frontend:$TAG
-      # Step 5: Build and push API Docker image
-      - name: Build API Docker image
+          TAG=${GITHUB_REF##*/}
+          if [[ "$TAG" == v* ]]; then
+            # Remove the leading "v" from the version
+            VERSION=${TAG:1}
+            # Determine whether it's a TEST or PROD tag
+            if [[ "$VERSION" == "0.8" ]]; then
+              echo "Tag is TEST"
+              echo "TAG_PREFIX=TEST_" >> $GITHUB_ENV
+            else
+              echo "Tag is PROD"
+              echo "TAG_PREFIX=PROD_" >> $GITHUB_ENV
+            fi
+          fi
+
+      # Step 5: Build and push frontend Docker image
+      - name: Build and push frontend Docker image
         run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-api:$TAG ./api
-          docker push ghcr.io/$REPO_NAME/pxlcensor-api:$TAG
-      # Step 6: Build and push processor Docker image
-      - name: Build processor Docker image
+          TAG=${GITHUB_REF##*/}
+          TAG=${TAG:1}  # Remove the leading "v"
+          IMAGE_TAG=${{ env.TAG_PREFIX }}${TAG}
+          docker build -t ghcr.io/${{ github.repository_owner }}/pxlcensor-frontend-luca:${IMAGE_TAG} ./frontend
+          docker push ghcr.io/${{ github.repository_owner }}/pxlcensor-frontend-luca:${IMAGE_TAG}
+
+      # Step 6: Build and push API Docker image
+      - name: Build and push API Docker image
         run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG ./processor
-          docker push ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG
-      # Step 7: Build and push media Docker image
-      - name: Build media Docker image
+          TAG=${GITHUB_REF##*/}
+          TAG=${TAG:1}  # Remove the leading "v"
+          IMAGE_TAG=${{ env.TAG_PREFIX }}${TAG}
+          docker build -t ghcr.io/${{ github.repository_owner }}/pxlcensor-api-luca:${IMAGE_TAG} ./api
+          docker push ghcr.io/${{ github.repository_owner }}/pxlcensor-api-luca:${IMAGE_TAG}
+
+      # Step 7: Build and push processor Docker image
+      - name: Build and push processor Docker image
         run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
-          docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
+          TAG=${GITHUB_REF##*/}
+          TAG=${TAG:1}  # Remove the leading "v"
+          IMAGE_TAG=${{ env.TAG_PREFIX }}${TAG}
+          docker build -t ghcr.io/${{ github.repository_owner }}/pxlcensor-processor-luca:${IMAGE_TAG} ./processor
+          docker push ghcr.io/${{ github.repository_owner }}/pxlcensor-processor-luca:${IMAGE_TAG}
+
+      # Step 8: Build and push media Docker image
+      - name: Build and push media Docker image
+        run: |
+          TAG=${GITHUB_REF##*/}
+          TAG=${TAG:1}  # Remove the leading "v"
+          IMAGE_TAG=${{ env.TAG_PREFIX }}${TAG}
+          docker build -t ghcr.io/${{ github.repository_owner }}/pxlcensor-media-luca:${IMAGE_TAG} ./media
+          docker push ghcr.io/${{ github.repository_owner }}/pxlcensor-media-luca:${IMAGE_TAG}
