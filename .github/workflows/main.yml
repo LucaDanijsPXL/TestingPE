@@ -58,9 +58,7 @@ jobs:
       # Step 7: Build and push media Docker image (to ensure it's tagged correctly)
       - name: Build media Docker image
         run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
+          REPO_NAME="lucadanijspxl/TestingPE"  # Explicitly set the correct repository for media
           TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          
-          # Correct the image name to pxlcensor-media (not pxlcensor-mmedia)
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
           docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
