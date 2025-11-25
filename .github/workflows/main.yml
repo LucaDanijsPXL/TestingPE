@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v0.8)'
+        description: 'Version tag (e.g., TEST_v0.8)'
         required: true
-        default: 'v0.8'  # Default version tag
+        default: 'TEST_v0.8'  # Default version tag
 
 jobs:
   build:
@@ -36,9 +36,8 @@ jobs:
       # Step 4: Build and push frontend Docker image
       - name: Build frontend Docker image
         run: |
-          # Convert the repository name and tag to lowercase
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
+          TAG=${{ github.event.inputs.version }}  # Use version input as tag
           
           # Build and push Docker image
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-frontend:$TAG ./frontend
@@ -48,7 +47,7 @@ jobs:
       - name: Build API Docker image
         run: |
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
+          TAG=${{ github.event.inputs.version }}  # Use version input as tag
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-api:$TAG ./api
           docker push ghcr.io/$REPO_NAME/pxlcensor-api:$TAG
 
@@ -56,15 +55,14 @@ jobs:
       - name: Build processor Docker image
         run: |
           REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
+          TAG=${{ github.event.inputs.version }}  # Use version input as tag
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG ./processor
           docker push ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG
 
-      # Step 7: Build and push media Docker image (to ensure it's tagged under TestingPE)
+      # Step 7: Build and push media Docker image (to ensure it's tagged correctly)
       - name: Build media Docker image
         run: |
-          # Explicitly tag as TestingPE for media image
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          TAG=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')  # Convert tag to lowercase
+          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
+          TAG=${{ github.event.inputs.version }}  # Use version input as tag
           docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
           docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
