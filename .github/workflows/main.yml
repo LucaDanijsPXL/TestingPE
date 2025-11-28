@@ -1,64 +1,72 @@
-name: Build and Push Docker Images to GHCR
+name: Build and Push Images
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., TEST_v0.8)'
-        required: true
-        default: 'TEST_v0.8'  # Default version tag
+  push:
+    tags:
+      - 'TEST_v*'
+      - 'PROD_v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: lucadanijspxl
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-and-push:
+    # Requirement: Use a private runner hosted on a cloud provider.
+    # The 'self-hosted' label should correspond to your runner's configuration.
+    runs-on: self-hosted
+
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      # Step 1: Checkout the repository code
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      # Step 2: Add the org.opencontainers.image.source label to the Dockerfile
-      - name: Modify Dockerfile to include org.opencontainers.image.source label
-        run: |
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./frontend/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./api/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./processor/Dockerfile
-          echo 'LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"' >> ./media/Dockerfile
-      # Step 3: Log in to GitHub Container Registry (GHCR) using Personal Access Token (PAT)
-      - name: Log in to GHCR using PAT
+      - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}  # GitHub username
-          password: ${{ secrets.GHCR_TOKEN }}  # PAT stored in GitHub Secrets
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step 4: Build and push frontend Docker image
-      - name: Build frontend Docker image
-        run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          
-          # Build and push Docker image
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-frontend:$TAG ./frontend
-          docker push ghcr.io/$REPO_NAME/pxlcensor-frontend:$TAG
-      # Step 5: Build and push API Docker image
-      - name: Build API Docker image
-        run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-api:$TAG ./api
-          docker push ghcr.io/$REPO_NAME/pxlcensor-api:$TAG
-      # Step 6: Build and push processor Docker image
-      - name: Build processor Docker image
-        run: |
-          REPO_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')  # Convert repo name to lowercase
-          TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG ./processor
-          docker push ghcr.io/$REPO_NAME/pxlcensor-processor:$TAG
-      # Step 7: Build and push media Docker image (to ensure it's tagged correctly)
-      - name: Build media Docker image
-        run: |
-          REPO_NAME="lucadanijspxl/testingpe"  # Set the repository to lowercase
-          TAG=${{ github.event.inputs.version }}  # Use version input as tag
-          docker build -t ghcr.io/$REPO_NAME/pxlcensor-media:$TAG ./media
-          docker push ghcr.io/$REPO_NAME/pxlcensor-media:$TAG
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-api,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-frontend,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-media,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-processor
+          tags: |
+            type=ref,event=tag
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./api
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-api:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-frontend:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Media image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./media
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-media:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Processor image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./processor
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-processor:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
