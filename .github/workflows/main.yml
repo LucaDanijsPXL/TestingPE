@@ -12,9 +12,7 @@ env:
 
 jobs:
   build-and-push:
-    # Requirement: Use a private runner hosted on a cloud provider.
-    # The 'self-hosted' label should correspond to your runner's configuration.
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
