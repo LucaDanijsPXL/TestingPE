@@ -1,3 +1,4 @@
+
 name: Build and Push Images
 
 on:
@@ -21,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write # Allow writing to the repo for Kustomize updates
       packages: write
 
     steps:
@@ -42,7 +43,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-api,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-frontend,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-media,${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-processor
           tags: |
             type=ref,event=tag
-
       - name: Build and push API image
         uses: docker/build-push-action@v4
         with:
@@ -74,3 +74,68 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/pxlcensor-processor:${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_tag || github.ref_name }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  update-kustomize-and-push:
+    runs-on: ubuntu-latest
+    needs: build-and-push # Ensure this job runs only after images are built
+    permissions:
+      contents: write # Needed to push changes back to the repo
+      packages: read # Not strictly needed here, but good practice
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        # Checkout with GITHUB_TOKEN to allow pushing
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+      - name: Prepare Kustomize Update
+        id: prepare_update
+        run: |
+          TAG_NAME=${GITHUB_REF_NAME}
+          echo "Processing tag: ${TAG_NAME}"
+          
+          if [[ "${TAG_NAME}" == TEST_v* ]]; then
+            OVERLAY_PATH="INFRA/kustomize/overlays/test"
+            ENV_TYPE="TEST"
+          elif [[ "${TAG_NAME}" == PROD_v* ]]; then
+            OVERLAY_PATH="INFRA/kustomize/overlays/prod"
+            ENV_TYPE="PROD"
+          else
+            echo "Tag does not match TEST_v* or PROD_v*, skipping Kustomize update."
+            exit 0 # Exit gracefully if tag is not relevant
+          fi
+          
+          echo "OVERLAY_PATH=${OVERLAY_PATH}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "ENV_TYPE=${ENV_TYPE}" >> $GITHUB_OUTPUT
+      - name: Update Kustomize Image Tags
+        if: success() && steps.prepare_update.outputs.OVERLAY_PATH != ''
+        working-directory: ${{ steps.prepare_update.outputs.OVERLAY_PATH }}
+        run: |
+          IMAGE_TAG="${{ steps.prepare_update.outputs.IMAGE_TAG }}"
+          echo "Updating images in ${{ steps.prepare_update.outputs.OVERLAY_PATH }} to tag ${IMAGE_TAG}"
+          # List of images to update - ensure these match your kustomization.yaml names
+          IMAGES=(
+            "ghcr.io/${{ env.IMAGE_OWNER }}/pxlcensor-api"
+            "ghcr.io/${{ env.IMAGE_OWNER }}/pxlcensor-frontend"
+            "ghcr.io/${{ env.IMAGE_OWNER }}/pxlcensor-media"
+            "ghcr.io/${{ env.IMAGE_OWNER }}/pxlcensor-processor"
+          )
+          
+          for IMAGE_NAME in "${IMAGES[@]}"; do
+            echo "Setting image ${IMAGE_NAME} to ${IMAGE_TAG}"
+            kustomize edit set image "${IMAGE_NAME}=${IMAGE_NAME}:${IMAGE_TAG}"
+          done
+      - name: Commit and Push Changes
+        if: success() && steps.prepare_update.outputs.OVERLAY_PATH != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.prepare_update.outputs.OVERLAY_PATH }}/kustomization.yaml"
+          git commit -m "chore(${ENV_TYPE}): Update image tags for ${{ steps.prepare_update.outputs.IMAGE_TAG }}" || echo "No changes to commit"
+          git push
